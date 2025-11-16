@@ -1,11 +1,28 @@
-// Регистрация Service Worker
+// Регистрация Service Worker с обработкой ошибок
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker
-        .register('/sw.js')
-        .then(() => console.log('SW registered'))
-        .catch((err) => console.log('SW registration failed:', err));
+    // Определяем правильный путь к sw.js
+    const swUrl = './sw.js';
+    
+    window.addEventListener('load', () => {
+        navigator.serviceWorker
+            .register(swUrl)
+            .then((registration) => {
+                console.log('SW registered: ', registration);
+                
+                // Проверяем обновления
+                registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    console.log('New service worker found:', newWorker);
+                });
+            })
+            .catch((registrationError) => {
+                console.log('SW registration failed: ', registrationError);
+                // Не блокируем приложение если SW не работает
+            });
+    });
+} else {
+    console.log('Service Worker not supported');
 }
-
 (() => {
     // Обработка редиректа с 404 страницы
     if (sessionStorage.redirect) {
