@@ -12,6 +12,7 @@
             --primary: #2c5aa0;
             --primary-dark: #1e3d6f;
             --secondary: #4CAF50;
+            --danger: #dc3545;
             --background: #f8f9fa;
             --surface: #ffffff;
             --text: #333333;
@@ -113,11 +114,11 @@
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
-            width: 100%;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
+            text-decoration: none;
         }
 
         .btn:hover {
@@ -128,6 +129,55 @@
 
         .btn:active {
             transform: translateY(0);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-secondary {
+            background: var(--text-secondary);
+        }
+
+        .btn-secondary:hover {
+            background: #555;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 2px solid var(--primary);
+            color: var(--primary);
+        }
+
+        .btn-outline:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 8px 12px;
+            font-size: 0.9rem;
+        }
+
+        .btn-icon {
+            width: 20px;
+            height: 20px;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .action-buttons .btn {
+            flex: 1;
+            min-width: 140px;
         }
 
         /* Table */
@@ -143,7 +193,7 @@
         table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 900px;
+            min-width: 950px;
         }
 
         thead {
@@ -190,6 +240,16 @@
             font-weight: 500;
         }
 
+        .actions-cell {
+            white-space: nowrap;
+            width: 100px;
+        }
+
+        .actions-cell .btn {
+            padding: 6px 10px;
+            margin: 0 2px;
+        }
+
         /* Стиль для пустых значений */
         .empty-value {
             color: var(--text-secondary);
@@ -206,6 +266,43 @@
             font-size: 3rem;
             margin-bottom: 16px;
             opacity: 0.5;
+        }
+
+        /* Модальное окно */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            margin-bottom: 16px;
+        }
+
+        .modal-body {
+            margin-bottom: 24px;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
         }
 
         /* Анимации */
@@ -254,11 +351,8 @@
                 grid-template-columns: 1fr 1fr;
             }
             
-            .btn {
-                width: auto;
-                min-width: 200px;
-                margin-left: auto;
-                display: inline-flex;
+            .action-buttons .btn {
+                flex: 0 1 auto;
             }
 
             table {
@@ -337,9 +431,24 @@
                 </div>
             </div>
             
-            <button id="saveBtn" class="btn">
-                <span>📝 Записать данные</span>
-            </button>
+            <div class="action-buttons">
+                <button id="saveBtn" class="btn">
+                    <span>📝 Записать данные</span>
+                </button>
+                <button id="updateBtn" class="btn" style="display: none;">
+                    <span>💾 Обновить запись</span>
+                </button>
+                <button id="cancelBtn" class="btn btn-outline" style="display: none;">
+                    <span>❌ Отмена</span>
+                </button>
+                <button id="exportBtn" class="btn btn-secondary">
+                    <span>📤 Экспорт в JSON</span>
+                </button>
+                <button id="importBtn" class="btn btn-secondary">
+                    <span>📥 Импорт из JSON</span>
+                </button>
+                <input type="file" id="importFile" accept=".json" style="display: none;">
+            </div>
         </div>
 
         <div class="table-container">
@@ -354,11 +463,28 @@
                         <th>Влажн.</th>
                         <th>Давл.</th>
                         <th>Солнце</th>
+                        <th>Действия</th>
                     </tr>
                 </thead>
                 <tbody id="entriesTable">
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- Модальное окно подтверждения -->
+    <div id="confirmModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Подтверждение действия</h3>
+            </div>
+            <div class="modal-body">
+                <p id="modalMessage">Вы уверены, что хотите выполнить это действие?</p>
+            </div>
+            <div class="modal-footer">
+                <button id="modalCancel" class="btn btn-outline">Отмена</button>
+                <button id="modalConfirm" class="btn btn-danger">Подтвердить</button>
+            </div>
         </div>
     </div>
 
