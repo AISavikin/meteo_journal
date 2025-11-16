@@ -1,12 +1,12 @@
 {
   "name": "Метеожурнал экспедиции",
   "short_name": "Метеожурнал",
-  "start_url": "/",
+  "start_url": ".",
   "display": "standalone",
   "background_color": "#2c5aa0",
   "theme_color": "#2c5aa0",
   "orientation": "portrait",
-  "scope": "/",
+  "scope": ".",
   "categories": ["weather", "productivity"],
   "description": "Приложение для ведения метеорологического журнала экспедиции",
   "icons": [

@@ -6,6 +6,17 @@ if ('serviceWorker' in navigator) {
         .catch((err) => console.log('SW registration failed:', err));
 }
 
+(() => {
+    // Обработка редиректа с 404 страницы
+    if (sessionStorage.redirect) {
+        const redirect = sessionStorage.redirect;
+        delete sessionStorage.redirect;
+        if (redirect !== location.href) {
+            history.replaceState(null, null, redirect);
+        }
+    }
+})();
+
 // Логика приложения
 class MeteoJournal {
     constructor() {
