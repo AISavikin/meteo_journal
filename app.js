@@ -1,65 +1,28 @@
-// Регистрация Service Worker с улучшенной обработкой
+   // Регистрация Service Worker с обработкой ошибок
 if ('serviceWorker' in navigator) {
-  const swUrl = './sw.js';
-  
-  window.addEventListener('load', async () => {
-    try {
-      // Сначала попробуем удалить все старые сервис воркеры
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      for (let registration of registrations) {
-        await registration.unregister();
-        console.log('Unregistered old SW:', registration.scope);
-      }
-      
-      // Очистим кэш
-      if ('caches' in window) {
-        const cacheNames = await caches.keys();
-        await Promise.all(
-          cacheNames.map(cacheName => caches.delete(cacheName))
-        );
-        console.log('Cleared all caches');
-      }
-      
-      // Ждем немного перед регистрацией нового
-      setTimeout(async () => {
-        try {
-          const registration = await navigator.serviceWorker.register(swUrl);
-          console.log('SW registered successfully: ', registration);
-          
-          // Проверяем обновления
-          registration.addEventListener('updatefound', () => {
-            const newWorker = registration.installing;
-            console.log('New SW found:', newWorker?.state);
-            
-            newWorker.addEventListener('statechange', () => {
-              console.log('SW state changed:', newWorker.state);
+    // Определяем правильный путь к sw.js
+    const swUrl = './sw.js';
+    
+    window.addEventListener('load', () => {
+        navigator.serviceWorker
+            .register(swUrl)
+            .then((registration) => {
+                console.log('SW registered: ', registration);
+                
+                // Проверяем обновления
+                registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    console.log('New service worker found:', newWorker);
+                });
+            })
+            .catch((registrationError) => {
+                console.log('SW registration failed: ', registrationError);
+                // Не блокируем приложение если SW не работает
             });
-          });
-          
-          // Проверяем активацию
-          if (registration.active) {
-            console.log('SW already active');
-          }
-          
-        } catch (registrationError) {
-          console.log('SW registration failed: ', registrationError);
-        }
-      }, 1000);
-      
-    } catch (error) {
-      console.log('Cleanup failed: ', error);
-    }
-  });
-  
-  // Обработчик для отладочной информации
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    console.log('SW controller changed');
-  });
-  
+    });
 } else {
-  console.log('Service Worker not supported');
+    console.log('Service Worker not supported');
 }
-
 (() => {
     // Обработка редиректа с 404 страницы
     if (sessionStorage.redirect) {
