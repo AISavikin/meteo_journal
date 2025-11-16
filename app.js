@@ -194,9 +194,9 @@ class MeteoJournal {
 
         // Переключаем в режим редактирования
         this.editingId = id;
-        document.getElementById('saveBtn').style.display = 'none';
-        document.getElementById('updateBtn').style.display = 'inline-flex';
-        document.getElementById('cancelBtn').style.display = 'inline-flex';
+        document.querySelector('.primary-actions').style.display = 'none';
+        document.querySelector('.edit-actions').style.display = 'flex';
+        document.querySelector('.secondary-actions').style.display = 'none';
 
         // Прокручиваем к форме
         document.querySelector('.card').scrollIntoView({ behavior: 'smooth' });
@@ -204,9 +204,9 @@ class MeteoJournal {
 
     cancelEdit() {
         this.editingId = null;
-        document.getElementById('saveBtn').style.display = 'inline-flex';
-        document.getElementById('updateBtn').style.display = 'none';
-        document.getElementById('cancelBtn').style.display = 'none';
+        document.querySelector('.primary-actions').style.display = 'block';
+        document.querySelector('.edit-actions').style.display = 'none';
+        document.querySelector('.secondary-actions').style.display = 'grid';
         this.clearForm();
     }
 
@@ -340,7 +340,7 @@ class MeteoJournal {
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
-            background: ${type === 'success' ? '#4CAF50' : '#f44336'};
+            background: ${type === 'success' ? '#28a745' : '#dc3545'};
             color: white;
             padding: 12px 24px;
             border-radius: 8px;
