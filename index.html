@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Метеожурнал экспедиции</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#007bff"/>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #entries {
+            margin-top: 20px;
+        }
+        .entry {
+            padding: 10px;
+            border-bottom: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <h1>Метеожурнал экспедиции</h1>
+    
+    <div class="form-group">
+        <label for="station">Название станции:</label>
+        <input type="text" id="station" placeholder="Введите название станции">
+    </div>
+    
+    <div class="form-group">
+        <label for="temperature">Температура (°C):</label>
+        <input type="number" id="temperature" placeholder="Введите температуру">
+    </div>
+    
+    <button id="saveBtn">Записать данные</button>
+    
+    <div id="entries"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
