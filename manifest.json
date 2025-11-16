@@ -3,23 +3,30 @@
   "short_name": "Метеожурнал",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#007bff",
+  "background_color": "#2c5aa0",
+  "theme_color": "#2c5aa0",
+  "orientation": "portrait",
+  "scope": "/",
+  "categories": ["weather", "productivity"],
+  "description": "Приложение для ведения метеорологического журнала экспедиции",
   "icons": [
     {
       "src": "icons/icon-64.png",
       "sizes": "64x64",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "icons/icon-128.png",
       "sizes": "128x128",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

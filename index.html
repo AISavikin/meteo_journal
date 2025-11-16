@@ -5,59 +5,362 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Метеожурнал экспедиции</title>
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#007bff"/>
+    <meta name="theme-color" content="#2c5aa0"/>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            padding: 20px;
-            max-width: 600px;
-            margin: 0 auto;
+        /* CSS Variables for theming */
+        :root {
+            --primary: #2c5aa0;
+            --primary-dark: #1e3d6f;
+            --secondary: #4CAF50;
+            --background: #f8f9fa;
+            --surface: #ffffff;
+            --text: #333333;
+            --text-secondary: #666666;
+            --border: #e0e0e0;
+            --shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-        }
-        input {
-            width: 100%;
-            padding: 8px;
+
+        /* Base styles */
+        * {
+            margin: 0;
+            padding: 0;
             box-sizing: border-box;
         }
-        button {
-            background: #007bff;
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: var(--background);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 0;
+            min-height: 100vh;
+        }
+
+        /* Layout */
+        .container {
+            max-width: 100%;
+            padding: 16px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
             color: white;
-            padding: 10px 20px;
+            padding: 20px 16px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+        }
+
+        /* Form elements */
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: var(--text);
+            font-size: 0.95rem;
+        }
+
+        input, select {
+            padding: 14px 16px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background: var(--surface);
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(44, 90, 160, 0.1);
+        }
+
+        /* Buttons */
+        .btn {
+            background: var(--primary);
+            color: white;
+            padding: 16px 24px;
             border: none;
-            border-radius: 4px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
             cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
-        #entries {
-            margin-top: 20px;
+
+        .btn:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
-        .entry {
-            padding: 10px;
-            border-bottom: 1px solid #ccc;
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        /* Table */
+        .table-container {
+            background: var(--surface);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            margin-bottom: 20px;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 900px;
+        }
+
+        thead {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+        }
+
+        th {
+            padding: 16px 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid var(--border);
+            transition: background-color 0.2s ease;
+        }
+
+        tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        tbody tr:hover {
+            background-color: rgba(44, 90, 160, 0.05);
+        }
+
+        td {
+            padding: 14px 12px;
+            font-size: 0.95rem;
+        }
+
+        .station-number {
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .temperature {
+            font-weight: 600;
+        }
+
+        .humidity {
+            font-weight: 500;
+        }
+
+        /* Стиль для пустых значений */
+        .empty-value {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        /* Анимации */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -20px);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, 0);
+            }
+        }
+
+        /* Responsive design for tablets */
+        @media (min-width: 768px) {
+            .container {
+                max-width: 1200px;
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 1.75rem;
+            }
+            
+            .form-row {
+                grid-template-columns: 1fr 1fr;
+            }
+            
+            .form-row-3 {
+                grid-template-columns: 1fr 1fr 1fr;
+            }
+            
+            .form-row-4 {
+                grid-template-columns: 1fr 1fr;
+            }
+            
+            .btn {
+                width: auto;
+                min-width: 200px;
+                margin-left: auto;
+                display: inline-flex;
+            }
+
+            table {
+                min-width: auto;
+            }
+        }
+
+        /* Responsive design for desktop */
+        @media (min-width: 1024px) {
+            .form-row {
+                grid-template-columns: 1fr 1fr 1fr;
+            }
+            
+            .form-row-3 {
+                grid-template-columns: 1fr 1fr 1fr;
+            }
+            
+            .form-row-4 {
+                grid-template-columns: 1fr 1fr 1fr 1fr;
+            }
         }
     </style>
 </head>
 <body>
-    <h1>Метеожурнал экспедиции</h1>
-    
-    <div class="form-group">
-        <label for="station">Название станции:</label>
-        <input type="text" id="station" placeholder="Введите название станции">
+    <div class="header">
+        <div class="container">
+            <h1>🌤️ Метеожурнал экспедиции</h1>
+        </div>
     </div>
-    
-    <div class="form-group">
-        <label for="temperature">Температура (°C):</label>
-        <input type="number" id="temperature" placeholder="Введите температуру">
+
+    <div class="container">
+        <div class="card">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="stationNumber">Номер станции</label>
+                    <input type="text" id="stationNumber">
+                </div>
+                
+                <div class="form-group">
+                    <label for="datetime">Дата и время</label>
+                    <input type="datetime-local" id="datetime">
+                </div>
+                
+                <div class="form-group">
+                    <label for="windSpeed">Скорость ветра (м/с)</label>
+                    <input type="number" id="windSpeed" step="0.1" min="0">
+                </div>
+            </div>
+
+            <div class="form-row form-row-4">
+                <div class="form-group">
+                    <label for="windDirection">Направление ветра (°)</label>
+                    <input type="number" id="windDirection" min="0" max="360" step="1">
+                </div>
+                
+                <div class="form-group">
+                    <label for="temperature">Температура воздуха (°C)</label>
+                    <input type="number" id="temperature" step="0.1">
+                </div>
+                
+                <div class="form-group">
+                    <label for="humidity">Влажность (%)</label>
+                    <input type="number" id="humidity" min="0" max="100" step="0.1">
+                </div>
+                
+                <div class="form-group">
+                    <label for="pressure">Давление (гПа)</label>
+                    <input type="number" id="pressure" step="0.1" min="0">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="solarRadiation">Интенсивность солн. излуч. (Вт/м²)</label>
+                    <input type="number" id="solarRadiation" step="1" min="0">
+                </div>
+            </div>
+            
+            <button id="saveBtn" class="btn">
+                <span>📝 Записать данные</span>
+            </button>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Станция</th>
+                        <th>Дата и время</th>
+                        <th>Ветер</th>
+                        <th>Направ.</th>
+                        <th>Темп.</th>
+                        <th>Влажн.</th>
+                        <th>Давл.</th>
+                        <th>Солнце</th>
+                    </tr>
+                </thead>
+                <tbody id="entriesTable">
+                </tbody>
+            </table>
+        </div>
     </div>
-    
-    <button id="saveBtn">Записать данные</button>
-    
-    <div id="entries"></div>
 
     <script src="app.js"></script>
 </body>
