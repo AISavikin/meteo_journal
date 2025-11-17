@@ -317,6 +317,97 @@ td {
     min-width: 100px;
 }
 
+/* Offline Status Indicator */
+.offline-status {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #ff6b6b;
+    color: white;
+    text-align: center;
+    padding: 8px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    z-index: 1001;
+    transform: translateY(-100%);
+    transition: transform 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.offline-status.show {
+    transform: translateY(0);
+}
+
+.offline-status.online {
+    background: #4CAF50;
+}
+
+/* Adjust header when offline status is visible */
+.offline-status.show + .header {
+    margin-top: 40px;
+}
+
+/* Connection quality indicator */
+.connection-quality {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    z-index: 1000;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.connection-quality.offline {
+    background: #ff6b6b;
+    color: white;
+}
+
+.connection-quality.online {
+    background: #4CAF50;
+    color: white;
+}
+
+.connection-quality.slow {
+    background: #ffa726;
+    color: white;
+}
+
+.connection-quality:hover {
+    transform: scale(1.1);
+}
+
+/* Tooltip for connection quality */
+.connection-quality::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    background: var(--text);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    margin-bottom: 8px;
+}
+
+.connection-quality:hover::after {
+    opacity: 1;
+}
+
 /* Анимации */
 @keyframes fadeIn {
     from {

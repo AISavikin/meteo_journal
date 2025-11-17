@@ -1,4 +1,4 @@
-   // Регистрация Service Worker с обработкой ошибок
+// Регистрация Service Worker с обработкой ошибок
 if ('serviceWorker' in navigator) {
     // Определяем правильный путь к sw.js
     const swUrl = './sw.js';
@@ -23,22 +23,14 @@ if ('serviceWorker' in navigator) {
 } else {
     console.log('Service Worker not supported');
 }
-(() => {
-    // Обработка редиректа с 404 страницы
-    if (sessionStorage.redirect) {
-        const redirect = sessionStorage.redirect;
-        delete sessionStorage.redirect;
-        if (redirect !== location.href) {
-            history.replaceState(null, null, redirect);
-        }
-    }
-})();
 
 // Логика приложения
 class MeteoJournal {
     constructor() {
         this.entries = JSON.parse(localStorage.getItem('meteoEntries')) || [];
         this.editingId = null;
+        this.networkStatus = 'online'; // 'online', 'offline', 'slow'
+        this.pendingAction = null;
         this.init();
     }
 
@@ -68,6 +60,9 @@ class MeteoJournal {
         
         // Добавляем обработчик Enter для любых полей ввода
         this.addEnterHandlers();
+        
+        // Инициализируем мониторинг сети
+        this.initNetworkMonitoring();
         
         this.renderEntries();
     }
@@ -103,6 +98,105 @@ class MeteoJournal {
                 }
             });
         });
+    }
+
+    // Мониторинг сети и индикатор статуса
+    initNetworkMonitoring() {
+        const offlineStatus = document.getElementById('offlineStatus');
+        const connectionQuality = document.getElementById('connectionQuality');
+
+        // Функция для проверки качества соединения
+        const checkConnectionQuality = async () => {
+            if (!navigator.onLine) {
+                this.setNetworkStatus('offline');
+                return;
+            }
+
+            try {
+                const startTime = performance.now();
+                const response = await fetch('./?cacheBust=' + Date.now(), {
+                    method: 'HEAD',
+                    cache: 'no-cache'
+                });
+                const endTime = performance.now();
+                const latency = endTime - startTime;
+
+                if (latency > 2000) {
+                    this.setNetworkStatus('slow');
+                } else {
+                    this.setNetworkStatus('online');
+                }
+            } catch (error) {
+                this.setNetworkStatus('offline');
+            }
+        };
+
+        // Обработчики событий сети
+        window.addEventListener('online', () => {
+            checkConnectionQuality();
+        });
+
+        window.addEventListener('offline', () => {
+            this.setNetworkStatus('offline');
+        });
+
+        // Периодическая проверка качества соединения (каждые 30 секунд)
+        setInterval(checkConnectionQuality, 30000);
+
+        // Проверка при загрузке
+        setTimeout(checkConnectionQuality, 1000);
+
+        // Клик по индикатору для ручной проверки
+        connectionQuality.addEventListener('click', () => {
+            connectionQuality.setAttribute('data-tooltip', 'Проверка...');
+            checkConnectionQuality();
+        });
+    }
+
+    setNetworkStatus(status) {
+        if (this.networkStatus === status) return;
+        
+        this.networkStatus = status;
+        const offlineStatus = document.getElementById('offlineStatus');
+        const connectionQuality = document.getElementById('connectionQuality');
+
+        switch (status) {
+            case 'offline':
+                offlineStatus.textContent = '🔌 Офлайн-режим';
+                offlineStatus.className = 'offline-status show';
+                connectionQuality.className = 'connection-quality offline';
+                connectionQuality.innerHTML = '🔌';
+                connectionQuality.setAttribute('data-tooltip', 'Нет подключения к интернету');
+                break;
+                
+            case 'slow':
+                offlineStatus.textContent = '🐌 Медленное соединение';
+                offlineStatus.className = 'offline-status show online';
+                connectionQuality.className = 'connection-quality slow';
+                connectionQuality.innerHTML = '🐌';
+                connectionQuality.setAttribute('data-tooltip', 'Медленное интернет-соединение');
+                // Автоматически скрываем через 3 секунды
+                setTimeout(() => {
+                    if (this.networkStatus === 'slow') {
+                        offlineStatus.classList.remove('show');
+                    }
+                }, 3000);
+                break;
+                
+            case 'online':
+                offlineStatus.textContent = '✅ Соединение восстановлено';
+                offlineStatus.className = 'offline-status show online';
+                connectionQuality.className = 'connection-quality online';
+                connectionQuality.innerHTML = '📶';
+                connectionQuality.setAttribute('data-tooltip', 'Стабильное соединение');
+                // Автоматически скрываем через 2 секунды
+                setTimeout(() => {
+                    if (this.networkStatus === 'online') {
+                        offlineStatus.classList.remove('show');
+                    }
+                }, 2000);
+                break;
+        }
     }
 
     saveEntry() {
