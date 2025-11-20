@@ -536,3 +536,32 @@ td {
     from { opacity: 0; }
     to { opacity: 1; }
 }
+
+/* Стили для контейнера даты/времени */
+.datetime-container {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+
+.datetime-container input {
+    flex: 1;
+}
+
+.datetime-container .btn {
+    width: auto;
+    min-width: 50px;
+    padding: 8px 12px;
+    white-space: nowrap;
+}
+
+/* Адаптивные стили для мобильных устройств */
+@media (max-width: 480px) {
+    .datetime-container {
+        flex-direction: column;
+    }
+    
+    .datetime-container .btn {
+        width: 100%;
+    }
+}

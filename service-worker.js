@@ -1,4 +1,4 @@
-const APP_VERSION = '0.2';
+const APP_VERSION = '0.2.1';
 const CACHE_NAME = `meteo-journal-${APP_VERSION}`;
 const API_CACHE_NAME = `${CACHE_NAME}-api`;
 const MAX_CACHE_SIZE = 100;

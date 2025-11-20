@@ -36,7 +36,12 @@
                 
                 <div class="form-group">
                     <label for="datetime">Дата и время</label>
-                    <input type="datetime-local" id="datetime">
+                    <div class="datetime-container">
+                        <input type="datetime-local" id="datetime">
+                        <button type="button" id="currentTimeBtn" class="btn btn-sm btn-outline" title="Установить текущее время">
+                            <span>⏰</span>
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="form-group">

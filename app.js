@@ -184,7 +184,8 @@ class MeteoJournal {
             { id: 'importBtn', event: 'click', handler: () => document.getElementById('importFile').click() },
             { id: 'importFile', event: 'change', handler: (e) => this.importFromJson(e) },
             { id: 'modalCancel', event: 'click', handler: () => this.hideModal() },
-            { id: 'modalConfirm', event: 'click', handler: () => this.executeConfirmedAction() }
+            { id: 'modalConfirm', event: 'click', handler: () => this.executeConfirmedAction() },
+            { id: 'currentTimeBtn', event: 'click', handler: () => this.setCurrentDateTime() }
         ];
 
         handlers.forEach(({ id, event, handler }) => {
@@ -205,17 +206,24 @@ class MeteoJournal {
     }
 
     setCurrentDateTime() {
-        try {
-            const now = new Date();
-            const localDateTime = this.getLocalDateTimeString(now);
-            const datetimeInput = document.getElementById('datetime');
-            if (datetimeInput) {
-                datetimeInput.value = localDateTime;
-            }
-        } catch (error) {
-            console.error('Failed to set current datetime:', error);
+    try {
+        const now = new Date();
+        const localDateTime = this.getLocalDateTimeString(now);
+        const datetimeInput = document.getElementById('datetime');
+        if (datetimeInput) {
+            datetimeInput.value = localDateTime;
+            // Прокручиваем к ближайшей минуте для удобства
+            datetimeInput.step = '60'; // 1 minute steps
+        }
+    } catch (error) {
+        console.error('Failed to set current datetime:', error);
+        // Fallback: используем стандартный формат
+        const datetimeInput = document.getElementById('datetime');
+        if (datetimeInput) {
+            datetimeInput.value = new Date().toISOString().slice(0, 16);
         }
     }
+}
 
     getLocalDateTimeString(date) {
         try {
