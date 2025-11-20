@@ -1,5 +1,9 @@
-const CACHE_NAME = 'meteo-journal-v3';
-const MAX_CACHE_SIZE = 100; // Максимум 100 запросов в кэше
+const APP_VERSION = '0.2';
+const CACHE_NAME = `meteo-journal-${APP_VERSION}`;
+const API_CACHE_NAME = `${CACHE_NAME}-api`;
+const MAX_CACHE_SIZE = 100;
+const MAX_API_CACHE_SIZE = 50;
+
 const STATIC_CACHE_URLS = [
     './',
     './app.js',
@@ -107,7 +111,6 @@ const FALLBACK_HTML = `<!DOCTYPE html>
             btn.innerHTML = '<span class="loading"></span>Проверка связи...';
             btn.disabled = true;
             
-            // Пытаемся зарегистрировать Service Worker при повторной попытке
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register('./service-worker.js')
                     .then(() => {
@@ -129,11 +132,9 @@ const FALLBACK_HTML = `<!DOCTYPE html>
         }
         
         function useOffline() {
-            // Перенаправляем на главную страницу для офлайн-работы
             location.replace('./');
         }
         
-        // Автоматическая проверка соединения
         if (navigator.onLine) {
             setTimeout(() => {
                 location.reload();
@@ -144,18 +145,36 @@ const FALLBACK_HTML = `<!DOCTYPE html>
 </html>`;
 
 // Функция для очистки старых записей в кэше
-async function cleanOldCache(cache) {
+async function cleanOldCache(cache, maxSize) {
     try {
         const requests = await cache.keys();
-        if (requests.length > MAX_CACHE_SIZE) {
-            // Сортируем запросы по дате (старые сначала)
-            const sortedRequests = requests.sort((a, b) => {
-                return a.url.localeCompare(b.url); // Простая сортировка по URL
-            });
+        if (requests.length > maxSize) {
+            // Получаем информацию о времени кэширования
+            const requestsWithTime = await Promise.all(
+                requests.map(async (request) => {
+                    const response = await cache.match(request);
+                    let timestamp = Date.now();
+                    
+                    if (response) {
+                        const dateHeader = response.headers.get('date');
+                        const lastModified = response.headers.get('last-modified');
+                        if (dateHeader) {
+                            timestamp = new Date(dateHeader).getTime();
+                        } else if (lastModified) {
+                            timestamp = new Date(lastModified).getTime();
+                        }
+                    }
+                    
+                    return { request, timestamp };
+                })
+            );
+            
+            // Сортируем по времени (старые сначала)
+            requestsWithTime.sort((a, b) => a.timestamp - b.timestamp);
             
             // Удаляем самые старые записи
-            const toDelete = sortedRequests.slice(0, requests.length - MAX_CACHE_SIZE);
-            await Promise.all(toDelete.map(request => cache.delete(request)));
+            const toDelete = requestsWithTime.slice(0, requests.length - maxSize);
+            await Promise.all(toDelete.map(item => cache.delete(item.request)));
             
             console.log(`Service Worker: Cleared ${toDelete.length} old cache entries`);
         }
@@ -164,142 +183,93 @@ async function cleanOldCache(cache) {
     }
 }
 
-// Установка Service Worker
-self.addEventListener('install', (event) => {
-    console.log('Service Worker: Installing...');
+// Обработка API запросов
+async function handleApiRequest(request) {
+    const cache = await caches.open(API_CACHE_NAME);
     
-    // Принудительная активация нового SW
-    self.skipWaiting();
-    
-    event.waitUntil(
-        (async () => {
-            try {
-                const cache = await caches.open(CACHE_NAME);
-                console.log('Service Worker: Caching static resources');
-                
-                // Стратегия: кэшируем критически важные ресурсы
-                const criticalUrls = ['./', './app.js', './style.css'];
-                await cache.addAll(criticalUrls);
-                
-                // Остальные ресурсы кэшируем с обработкой ошибок
-                const otherUrls = STATIC_CACHE_URLS.filter(url => !criticalUrls.includes(url));
-                for (const url of otherUrls) {
-                    try {
-                        await cache.add(url);
-                    } catch (error) {
-                        console.warn(`Service Worker: Failed to cache ${url}:`, error);
-                    }
-                }
-                
-                console.log('Service Worker: Installation completed');
-            } catch (error) {
-                console.error('Service Worker: Installation failed:', error);
-                // Установка все равно завершается успешно
-            }
-        })()
-    );
-});
-
-// Активация Service Worker
-self.addEventListener('activate', (event) => {
-    console.log('Service Worker: Activating...');
-    
-    event.waitUntil(
-        (async () => {
-            try {
-                // Очищаем старые кэши
-                const cacheNames = await caches.keys();
-                await Promise.all(
-                    cacheNames.map((cacheName) => {
-                        if (cacheName !== CACHE_NAME) {
-                            console.log('Service Worker: Deleting old cache:', cacheName);
-                            return caches.delete(cacheName);
-                        }
-                    })
-                );
-                
-                console.log('Service Worker: Activation completed');
-                // Сообщаем всем клиентам о готовности
-                await self.clients.claim();
-                
-                // Отправляем сообщение всем клиентам
-                const clients = await self.clients.matchAll();
-                clients.forEach(client => {
-                    client.postMessage({
-                        type: 'SW_ACTIVATED',
-                        version: CACHE_NAME
-                    });
-                });
-            } catch (error) {
-                console.error('Service Worker: Activation failed:', error);
-            }
-        })()
-    );
-});
-
-// Обработка запросов
-self.addEventListener('fetch', (event) => {
-    // Пропускаем не-GET запросы и chrome-extension
-    if (event.request.method !== 'GET' || 
-        event.request.url.startsWith('chrome-extension://') ||
-        event.request.url.includes('browser-sync') ||
-        event.request.url.includes('sockjs')) {
-        return;
-    }
-
-    // Для API запросов используем сеть сначала
-    if (event.request.url.includes('/api/')) {
-        return;
-    }
-
-    event.respondWith(
-        (async () => {
-            // Для навигационных запросов (страницы)
-            if (event.request.mode === 'navigate') {
-                return handleNavigateRequest(event.request);
-            }
-            
-            // Для статических ресурсов
-            return handleStaticRequest(event.request);
-        })()
-    );
-});
-
-// Обработка навигационных запросов
-async function handleNavigateRequest(request) {
     try {
         // Сначала пробуем сеть с таймаутом
         const networkPromise = fetch(request);
         const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout')), 5000) // Увеличили таймаут
+            setTimeout(() => reject(new Error('Timeout')), 10000)
+        );
+        
+        const response = await Promise.race([networkPromise, timeoutPromise]);
+        
+        // Если успех - кэшируем для оффлайн использования
+        if (response && response.ok) {
+            const cacheResponse = response.clone();
+            await cache.put(request, cacheResponse);
+            await cleanOldCache(cache, MAX_API_CACHE_SIZE);
+        }
+        
+        return response;
+    } catch (error) {
+        console.log('Service Worker: API request failed, trying cache...', error);
+        
+        // В оффлайне пробуем вернуть закэшированные данные
+        const cachedResponse = await cache.match(request);
+        if (cachedResponse) {
+            console.log('Service Worker: Serving cached API response');
+            return cachedResponse;
+        }
+        
+        // Если нет кэша, возвращаем заглушку
+        return new Response(JSON.stringify({
+            error: 'offline',
+            message: 'Приложение работает в оффлайн-режиме. Данные будут обновлены при восстановлении соединения.',
+            timestamp: new Date().toISOString()
+        }), {
+            status: 200,
+            headers: { 
+                'Content-Type': 'application/json; charset=utf-8',
+                'Cache-Control': 'no-cache'
+            }
+        });
+    }
+}
+
+// Обработка навигационных запросов
+async function handleNavigateRequest(request) {
+    const cache = await caches.open(CACHE_NAME);
+    
+    try {
+        // Сначала пробуем сеть с таймаутом
+        const networkPromise = fetch(request);
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout')), 5000)
         );
         
         const response = await Promise.race([networkPromise, timeoutPromise]);
         
         // Если сетевой запрос успешен, обновляем кэш
         if (response && response.status === 200) {
-            const cache = await caches.open(CACHE_NAME);
-            await cache.put(request, response.clone()).catch(console.warn);
+            await cache.put(request, response.clone());
         }
         
         return response;
     } catch (networkError) {
-        console.log('Service Worker: Network failed for navigation, trying cache...');
+        console.log('Service Worker: Navigation network failed, trying cache...');
         
         // Пробуем кэш
         try {
-            const cachedResponse = await caches.match(request);
+            const cachedResponse = await cache.match(request);
             if (cachedResponse) {
                 return cachedResponse;
             }
             
-            // Если в кэше нет, пробуем index.html
-            const fallbackResponse = await caches.match('./');
-            if (fallbackResponse) {
-                return fallbackResponse;
+            // Если в кэше нет, пробуем альтернативные URL
+            const fallbackUrls = ['./', '/index.html', '/'];
+            for (const url of fallbackUrls) {
+                const fallbackResponse = await cache.match(url);
+                if (fallbackResponse) {
+                    console.log('Service Worker: Serving fallback for navigation');
+                    return fallbackResponse;
+                }
             }
             
             // Если ничего нет, возвращаем fallback HTML
+            console.log('Service Worker: Serving offline fallback HTML');
             return new Response(FALLBACK_HTML, {
                 headers: { 
                     'Content-Type': 'text/html; charset=utf-8',
@@ -328,7 +298,7 @@ async function handleStaticRequest(request) {
         // Сначала пробуем кэш
         const cachedResponse = await cache.match(request);
         if (cachedResponse) {
-            // Проверяем свежесть кэша (не старше 1 дня)
+            // Проверяем свежесть кэша (не старше 1 дня для статики)
             const cachedTime = new Date(cachedResponse.headers.get('date') || Date.now());
             const cacheAge = Date.now() - cachedTime.getTime();
             const MAX_AGE = 24 * 60 * 60 * 1000; // 1 день
@@ -343,17 +313,13 @@ async function handleStaticRequest(request) {
         if (networkResponse && networkResponse.status === 200) {
             // Клонируем response перед кэшированием
             const responseToCache = networkResponse.clone();
-            
-            // Кэшируем для будущего использования
-            await cache.put(request, responseToCache).catch(console.warn);
-            
-            // Очищаем старые записи если нужно
-            await cleanOldCache(cache);
+            await cache.put(request, responseToCache);
+            await cleanOldCache(cache, MAX_CACHE_SIZE);
         }
         
         return networkResponse;
     } catch (error) {
-        console.log('Service Worker: Static resource failed:', request.url, error);
+        console.log('Service Worker: Static resource failed, using cache:', request.url);
         
         // Пробуем вернуть из кэша даже если он старый
         const cachedResponse = await cache.match(request);
@@ -392,6 +358,125 @@ async function handleStaticRequest(request) {
     }
 }
 
+// Установка Service Worker
+self.addEventListener('install', (event) => {
+    console.log('Service Worker: Installing version', APP_VERSION);
+    
+    // Принудительная активация нового SW
+    self.skipWaiting();
+    
+    event.waitUntil(
+        (async () => {
+            try {
+                const cache = await caches.open(CACHE_NAME);
+                console.log('Service Worker: Caching static resources');
+                
+                // Кэшируем критические ресурсы с повторными попытками
+                const criticalUrls = ['./', './app.js', './style.css', './manifest.json'];
+                
+                for (const url of criticalUrls) {
+                    let success = false;
+                    for (let attempt = 0; attempt < 3 && !success; attempt++) {
+                        try {
+                            await cache.add(url);
+                            success = true;
+                            console.log(`Service Worker: Cached ${url} (attempt ${attempt + 1})`);
+                        } catch (error) {
+                            console.warn(`Service Worker: Failed to cache ${url}, attempt ${attempt + 1}:`, error);
+                            if (attempt === 2) {
+                                // На последней попытке создаем заглушку
+                                const fallbackContent = url.endsWith('.js') ? '// Fallback JS' :
+                                                       url.endsWith('.css') ? '/* Fallback CSS */' :
+                                                       FALLBACK_HTML;
+                                const fallbackResponse = new Response(fallbackContent, {
+                                    headers: { 
+                                        'Content-Type': url.endsWith('.js') ? 'application/javascript' :
+                                                     url.endsWith('.css') ? 'text/css' : 'text/html'
+                                    }
+                                });
+                                await cache.put(url, fallbackResponse);
+                            }
+                        }
+                    }
+                }
+                
+                console.log('Service Worker: Installation completed');
+            } catch (error) {
+                console.error('Service Worker: Installation failed:', error);
+            }
+        })()
+    );
+});
+
+// Активация Service Worker
+self.addEventListener('activate', (event) => {
+    console.log('Service Worker: Activating version', APP_VERSION);
+    
+    event.waitUntil(
+        (async () => {
+            try {
+                // Очищаем старые кэши
+                const cacheNames = await caches.keys();
+                await Promise.all(
+                    cacheNames.map((cacheName) => {
+                        if (cacheName.startsWith('meteo-journal-') && 
+                            cacheName !== CACHE_NAME && 
+                            cacheName !== API_CACHE_NAME) {
+                            console.log('Service Worker: Deleting old cache:', cacheName);
+                            return caches.delete(cacheName);
+                        }
+                    })
+                );
+                
+                console.log('Service Worker: Activation completed');
+                // Сообщаем всем клиентам о готовности
+                await self.clients.claim();
+                
+                // Отправляем сообщение всем клиентам
+                const clients = await self.clients.matchAll();
+                clients.forEach(client => {
+                    client.postMessage({
+                        type: 'SW_ACTIVATED',
+                        version: APP_VERSION,
+                        cacheName: CACHE_NAME
+                    });
+                });
+            } catch (error) {
+                console.error('Service Worker: Activation failed:', error);
+            }
+        })()
+    );
+});
+
+// Обработка запросов
+self.addEventListener('fetch', (event) => {
+    // Пропускаем не-GET запросы и chrome-extension
+    if (event.request.method !== 'GET' || 
+        event.request.url.startsWith('chrome-extension://') ||
+        event.request.url.includes('browser-sync') ||
+        event.request.url.includes('sockjs')) {
+        return;
+    }
+
+    // Для API запросов используем специальную обработку
+    if (event.request.url.includes('/api/')) {
+        event.respondWith(handleApiRequest(event.request));
+        return;
+    }
+
+    event.respondWith(
+        (async () => {
+            // Для навигационных запросов (страницы)
+            if (event.request.mode === 'navigate') {
+                return handleNavigateRequest(event.request);
+            }
+            
+            // Для статических ресурсов
+            return handleStaticRequest(event.request);
+        })()
+    );
+});
+
 // Фоновая синхронизация
 self.addEventListener('sync', (event) => {
     console.log('Service Worker: Background sync:', event.tag);
@@ -403,10 +488,9 @@ self.addEventListener('sync', (event) => {
 
 async function doBackgroundSync() {
     try {
-        // Здесь может быть логика фоновой синхронизации данных
         console.log('Service Worker: Performing background sync');
         
-        // Пример: проверка обновлений приложения
+        // Обновляем критические ресурсы
         const cache = await caches.open(CACHE_NAME);
         const urlsToUpdate = ['./', './app.js', './style.css'];
         
@@ -427,6 +511,15 @@ async function doBackgroundSync() {
                 console.warn(`Service Worker: Failed to update ${url}:`, error);
             }
         }
+        
+        // Уведомляем клиентов об обновлении
+        const clients = await self.clients.matchAll();
+        clients.forEach(client => {
+            client.postMessage({
+                type: 'BACKGROUND_SYNC_COMPLETE',
+                timestamp: new Date().toISOString()
+            });
+        });
     } catch (error) {
         console.error('Service Worker: Background sync failed:', error);
     }
@@ -443,8 +536,18 @@ self.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'GET_VERSION') {
         event.ports[0].postMessage({
             type: 'VERSION_INFO',
-            version: CACHE_NAME,
+            version: APP_VERSION,
+            cacheName: CACHE_NAME,
             timestamp: new Date().toISOString()
+        });
+    }
+    
+    if (event.data && event.data.type === 'CLEAR_CACHE') {
+        caches.delete(CACHE_NAME).then(() => {
+            event.ports[0].postMessage({
+                type: 'CACHE_CLEARED',
+                success: true
+            });
         });
     }
 });
@@ -459,7 +562,7 @@ if ('periodicSync' in self.registration) {
     });
 }
 
-// Обработка push-уведомлений (если понадобится)
+// Обработка push-уведомлений
 self.addEventListener('push', (event) => {
     console.log('Service Worker: Push message received', event);
     
@@ -500,7 +603,7 @@ self.addEventListener('notificationclick', (event) => {
         event.waitUntil(
             clients.matchAll({type: 'window'}).then(windowClients => {
                 for (let client of windowClients) {
-                    if (client.url === './' && 'focus' in client) {
+                    if (client.url.includes('./') && 'focus' in client) {
                         return client.focus();
                     }
                 }
@@ -510,4 +613,13 @@ self.addEventListener('notificationclick', (event) => {
             })
         );
     }
+});
+
+// Глобальная обработка ошибок
+self.addEventListener('error', (event) => {
+    console.error('Service Worker: Global error:', event.error);
+});
+
+self.addEventListener('unhandledrejection', (event) => {
+    console.error('Service Worker: Unhandled promise rejection:', event.reason);
 });
