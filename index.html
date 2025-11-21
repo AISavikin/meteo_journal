@@ -4,146 +4,114 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Метеожурнал экспедиции</title>
-    <base href="./">
+    <link rel="stylesheet" href="styles.css">
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="style.css">
-    <meta name="theme-color" content="#2c5aa0"/>
 </head>
 <body>
-    <!-- Offline Status Indicator -->
-    <div id="offlineStatus" class="offline-status">
-        <span>🔌 Офлайн-режим</span>
-    </div>
-
-    <!-- Connection Quality Indicator -->
-    <div id="connectionQuality" class="connection-quality" data-tooltip="Проверка соединения...">
-        <span>📶</span>
-    </div>
-
-    <div class="header">
-        <div class="container">
-            <h1>🌤️ Метеожурнал экспедиции</h1>
-        </div>
-    </div>
-
     <div class="container">
-        <div class="card">
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="stationNumber">Номер станции</label>
-                    <input type="text" id="stationNumber">
-                </div>
-                
-                <div class="form-group">
-                    <label for="datetime">Дата и время</label>
-                    <div class="datetime-container">
-                        <input type="datetime-local" id="datetime">
-                        <button type="button" id="currentTimeBtn" class="btn btn-sm btn-outline" title="Установить текущее время">
-                            <span>⏰</span>
-                        </button>
+        <header>
+            <h1>📝 Метеожурнал</h1>
+            <div class="connection-status" id="connectionStatus">📶</div>
+        </header>
+
+        <main>
+            <!-- Форма ввода данных -->
+            <section class="input-section card">
+                <h2>Новое наблюдение</h2>
+                <form id="meteoForm" class="compact-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="station">Станция</label>
+                            <input type="text" id="station" required placeholder="Например: 101">
+                        </div>
+                        <div class="form-group">
+                            <label for="datetime">Дата/время</label>
+                            <div class="datetime-group">
+                                <input type="datetime-local" id="datetime" required>
+                                <button type="button" id="currentTimeBtn" class="icon-btn" title="Текущее время">🔄</button>
+                            </div>
+                        </div>
                     </div>
-                </div>
-                
-                <div class="form-group">
-                    <label for="windSpeed">Скорость ветра (м/с)</label>
-                    <input type="number" id="windSpeed" step="0.1" min="0">
-                </div>
-            </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="windSpeed">Скорость ветра</label>
+                            <input type="number" id="windSpeed" min="0" step="0.1" placeholder="м/с">
+                        </div>
+                        <div class="form-group">
+                            <label for="windDirection">Направление ветра</label>
+                            <input type="number" id="windDirection" min="0" max="360" step="1" placeholder="°">
+                        </div>
+                        <div class="form-group">
+                            <label for="temperature">Температура</label>
+                            <input type="number" id="temperature" step="0.1" placeholder="°C">
+                        </div>
+                    </div>
 
-            <div class="form-row form-row-4">
-                <div class="form-group">
-                    <label for="windDirection">Направление ветра (°)</label>
-                    <input type="number" id="windDirection" min="0" max="360" step="1">
-                </div>
-                
-                <div class="form-group">
-                    <label for="temperature">Температура воздуха (°C)</label>
-                    <input type="number" id="temperature" step="0.1">
-                </div>
-                
-                <div class="form-group">
-                    <label for="humidity">Влажность (%)</label>
-                    <input type="number" id="humidity" min="0" max="100" step="0.1">
-                </div>
-                
-                <div class="form-group">
-                    <label for="pressure">Давление (гПа)</label>
-                    <input type="number" id="pressure" step="0.1" min="0">
-                </div>
-            </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="humidity">Влажность</label>
+                            <input type="number" id="humidity" min="0" max="100" step="1" placeholder="%">
+                        </div>
+                        <div class="form-group">
+                            <label for="pressure">Давление</label>
+                            <input type="number" id="pressure" min="800" max="1200" step="0.1" placeholder="гПа">
+                        </div>
+                        <div class="form-group">
+                            <label for="radiation">Солнечная радиация</label>
+                            <input type="number" id="radiation" min="0" step="0.1" placeholder="Вт/м²">
+                        </div>
+                    </div>
 
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="solarRadiation">Интенсивность солн. излуч. (Вт/м²)</label>
-                    <input type="number" id="solarRadiation" step="1" min="0">
+                    <div class="form-actions">
+                        <button type="submit" class="btn primary">Сохранить</button>
+                        <button type="reset" class="btn secondary">Очистить</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Панель управления данными -->
+            <section class="control-section">
+                <div class="form-row">
+                    <button id="importBtn" class="btn">📥 Импорт JSON</button>
+                    <button id="exportBtn" class="btn">📤 Экспорт JSON</button>
+                    <button id="clearCacheBtn" class="btn">🧹 Очистить кэш</button>
                 </div>
-            </div>
-            
-            <!-- Основные кнопки действий -->
-            <div class="primary-actions">
-                <button id="saveBtn" class="btn btn-success">
-                    <span>📝 Записать данные</span>
-                </button>
-            </div>
-            
-            <!-- Кнопки редактирования (скрыты по умолчанию) -->
-            <div class="edit-actions" style="display: none;">
-                <button id="updateBtn" class="btn btn-success">
-                    <span>💾 Обновить запись</span>
-                </button>
-                <button id="cancelBtn" class="btn btn-outline">
-                    <span>❌ Отмена</span>
-                </button>
-            </div>
-            
-            <!-- Вторичные кнопки -->
-            <div class="secondary-actions">
-                <button id="exportBtn" class="btn btn-secondary">
-                    <span>📤 Экспорт в JSON</span>
-                </button>
-                <button id="importBtn" class="btn btn-secondary">
-                    <span>📥 Импорт из JSON</span>
-                </button>
                 <input type="file" id="importFile" accept=".json" style="display: none;">
-            </div>
-        </div>
+            </section>
 
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Станция</th>
-                        <th>Дата и время</th>
-                        <th>Ветер</th>
-                        <th>Направ.</th>
-                        <th>Темп.</th>
-                        <th>Влажн.</th>
-                        <th>Давл.</th>
-                        <th>Солнце</th>
-                        <th>Действия</th>
-                    </tr>
-                </thead>
-                <tbody id="entriesTable">
-                </tbody>
-            </table>
-        </div>
+            <!-- Таблица данных -->
+            <section class="data-section card">
+                <h2>Данные наблюдений</h2>
+                <div class="table-container">
+                    <table id="dataTable">
+                        <thead>
+                            <tr>
+                                <th>Станция</th>
+                                <th>Дата/время</th>
+                                <th>Ветер (м/с)</th>
+                                <th>Напр. (°)</th>
+                                <th>Темп. (°C)</th>
+                                <th>Влаг. (%)</th>
+                                <th>Давл. (гПа)</th>
+                                <th>Радиация (Вт/м²)</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                            <!-- Данные будут добавляться через JS -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="load-more-container">
+                    <button id="loadMoreBtn" class="btn secondary">Загрузить еще</button>
+                </div>
+            </section>
+        </main>
     </div>
 
-    <!-- Модальное окно подтверждения -->
-    <div id="confirmModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="modalTitle">Подтверждение действия</h3>
-            </div>
-            <div class="modal-body">
-                <p id="modalMessage">Вы уверены, что хотите выполнить это действие?</p>
-            </div>
-            <div class="modal-footer">
-                <button id="modalCancel" class="btn btn-outline">Отмена</button>
-                <button id="modalConfirm" class="btn btn-danger">Подтвердить</button>
-            </div>
-        </div>
-    </div>
+    <!-- Toast уведомления -->
+    <div id="toast" class="toast"></div>
 
     <script src="app.js"></script>
 </body>

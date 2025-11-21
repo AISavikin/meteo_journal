@@ -1,4 +1,4 @@
-const APP_VERSION = '0.2.1';
+const APP_VERSION = '0.2.2';
 const CACHE_NAME = `meteo-journal-${APP_VERSION}`;
 const API_CACHE_NAME = `${CACHE_NAME}-api`;
 const MAX_CACHE_SIZE = 100;
@@ -299,10 +299,16 @@ async function handleStaticRequest(request) {
         const cachedResponse = await cache.match(request);
         if (cachedResponse) {
             // Проверяем свежесть кэша (не старше 1 дня для статики)
-            const cachedTime = new Date(cachedResponse.headers.get('date') || Date.now());
+            const cacheControl = cachedResponse.headers.get('cache-control');
+            const cachedTime = new Date(cachedResponse.headers.get('sw-cached-time') || cachedResponse.headers.get('date') || Date.now());
             const cacheAge = Date.now() - cachedTime.getTime();
-            const MAX_AGE = 24 * 60 * 60 * 1000; // 1 день
+            const MAX_AGE = 24 * 60 * 60 * 1000; // 1 день            
             
+            // Для статики с длительным кэшированием используем кэш
+            if (cacheControl && cacheControl.includes('max-age=31536000')) {
+                return cachedResponse;
+            }
+
             if (cacheAge < MAX_AGE) {
                 return cachedResponse;
             }
@@ -313,7 +319,16 @@ async function handleStaticRequest(request) {
         if (networkResponse && networkResponse.status === 200) {
             // Клонируем response перед кэшированием
             const responseToCache = networkResponse.clone();
-            await cache.put(request, responseToCache);
+            const cachedHeaders = new Headers(networkResponse.headers);
+            cachedHeaders.set('sw-cached-time', new Date().toISOString());
+
+            const cachedResponse = new Response(await networkResponse.blob(), {
+                status: networkResponse.status,
+                statusText: networkResponse.statusText,
+                headers: cachedHeaders
+            });
+
+            await cache.put(request, cachedResponse);
             await cleanOldCache(cache, MAX_CACHE_SIZE);
         }
         

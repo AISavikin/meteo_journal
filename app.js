@@ -22,8 +22,6 @@ if ('serviceWorker' in navigator) {
             })
             .catch((registrationError) => {
                 console.error('SW registration failed: ', registrationError);
-                // Приложение продолжает работать даже без Service Worker
-                showPersistentMessage('Предупреждение: некоторые функции офлайн-режима могут быть недоступны', 'warning');
             });
             
         // Обработка ошибок в уже зарегистрированном Service Worker
@@ -33,904 +31,434 @@ if ('serviceWorker' in navigator) {
     });
 } else {
     console.log('Service Worker not supported');
-    showPersistentMessage('Ваш браузер не поддерживает все функции приложения', 'warning');
 }
 
-// Улучшенный класс MeteoJournal с защитой от всех видов сбоев
+// app.js
 class MeteoJournal {
     constructor() {
-        this.storage = this.initStorage();
-        this.entries = this.storage.get('meteoEntries') || [];
-        this.editingId = null;
-        this.networkStatus = 'online';
-        this.pendingAction = null;
-        this.storageWarningShown = false;
-        this.init();
+        this.storageKey = 'meteoJournalData';
+        this.data = [];
+        this.currentEditId = null;
+        this.itemsPerPage = 20;
+        this.currentPage = 0;
+        
+        this.initStorage();
+        this.setupEventListeners();
+        this.renderTable();
+        this.updateConnectionStatus();
     }
 
-    init() {
-        try {
-            // Устанавливаем текущую дату и время по умолчанию
-            this.setCurrentDateTime();
-            
-            // Безопасная инициализация обработчиков событий
-            this.initEventHandlers();
-            
-            // Инициализируем мониторинг сети
-            this.initNetworkMonitoring();
-            
-            this.renderEntries();
-            
-            console.log('MeteoJournal initialized successfully');
-        } catch (error) {
-            console.error('Failed to initialize MeteoJournal:', error);
-            this.showMessage('Ошибка инициализации приложения', 'error');
-        }
-    }
-
-    // Инициализация безопасного хранилища
+    // Многоуровневое хранилище с fallback
     initStorage() {
-        const memoryStorage = {};
-        let storageType = 'memory';
-        
         try {
-            // Проверяем доступность localStorage
-            const testKey = 'storage_test_' + Date.now();
-            localStorage.setItem(testKey, 'test');
-            const testValue = localStorage.getItem(testKey);
-            localStorage.removeItem(testKey);
-            
-            if (testValue === 'test') {
-                storageType = 'localStorage';
-                console.log('Storage: Using localStorage');
-            }
-        } catch (error) {
-            console.warn('LocalStorage not available, checking sessionStorage...');
-        }
-        
-        if (storageType === 'memory') {
-            try {
-                // Проверяем sessionStorage как fallback
-                const testKey = 'storage_test_' + Date.now();
-                sessionStorage.setItem(testKey, 'test');
-                const testValue = sessionStorage.getItem(testKey);
-                sessionStorage.removeItem(testKey);
-                
-                if (testValue === 'test') {
-                    storageType = 'sessionStorage';
-                    console.log('Storage: Using sessionStorage');
-                }
-            } catch (error) {
-                console.warn('SessionStorage not available, using memory storage');
-            }
-        }
-
-        return {
-            type: storageType,
-            get: (key) => {
-                try {
-                    switch (storageType) {
-                        case 'localStorage':
-                            const item = localStorage.getItem(key);
-                            return item ? JSON.parse(item) : null;
-                        case 'sessionStorage':
-                            const sessionItem = sessionStorage.getItem(key);
-                            return sessionItem ? JSON.parse(sessionItem) : null;
-                        default:
-                            return memoryStorage[key] || null;
-                    }
-                } catch (error) {
-                    console.error('Storage get error:', error);
-                    return memoryStorage[key] || null;
-                }
-            },
-            set: (key, value) => {
-                try {
-                    const jsonValue = JSON.stringify(value);
-                    
-                    switch (storageType) {
-                        case 'localStorage':
-                            localStorage.setItem(key, jsonValue);
-                            break;
-                        case 'sessionStorage':
-                            sessionStorage.setItem(key, jsonValue);
-                            break;
-                        default:
-                            memoryStorage[key] = value;
-                    }
-                    
-                    // Проверяем, что данные действительно сохранились
-                    const retrieved = this.storage.get(key);
-                    if (JSON.stringify(retrieved) !== JSON.stringify(value)) {
-                        throw new Error('Storage verification failed');
-                    }
-                    
-                    return true;
-                } catch (error) {
-                    console.error('Storage set error:', error);
-                    
-                    // Fallback на memory storage
-                    if (storageType !== 'memory') {
-                        console.warn('Falling back to memory storage');
-                        storageType = 'memory';
-                        memoryStorage[key] = value;
-                        return true;
-                    }
-                    
-                    return false;
-                }
-            },
-            getQuotaInfo: () => {
-                if (storageType === 'localStorage') {
-                    let total = 0;
-                    for (let key in localStorage) {
-                        if (localStorage.hasOwnProperty(key)) {
-                            total += localStorage[key].length;
-                        }
-                    }
-                    return { type: storageType, used: total, quota: 5 * 1024 * 1024 }; // 5MB typical
-                }
-                return { type: storageType };
-            }
-        };
-    }
-
-    initEventHandlers() {
-        const handlers = [
-            { id: 'saveBtn', event: 'click', handler: () => this.saveEntry() },
-            { id: 'updateBtn', event: 'click', handler: () => this.updateEntry() },
-            { id: 'cancelBtn', event: 'click', handler: () => this.cancelEdit() },
-            { id: 'exportBtn', event: 'click', handler: () => this.exportToJson() },
-            { id: 'importBtn', event: 'click', handler: () => document.getElementById('importFile').click() },
-            { id: 'importFile', event: 'change', handler: (e) => this.importFromJson(e) },
-            { id: 'modalCancel', event: 'click', handler: () => this.hideModal() },
-            { id: 'modalConfirm', event: 'click', handler: () => this.executeConfirmedAction() },
-            { id: 'currentTimeBtn', event: 'click', handler: () => this.setCurrentDateTime() }
-        ];
-
-        handlers.forEach(({ id, event, handler }) => {
-            try {
-                const element = document.getElementById(id);
-                if (element) {
-                    element.addEventListener(event, handler);
-                } else {
-                    console.warn(`Element with id '${id}' not found`);
-                }
-            } catch (error) {
-                console.error(`Failed to add event handler for ${id}:`, error);
-            }
-        });
-
-        // Обработчики Enter для полей ввода
-        this.addEnterHandlers();
-    }
-
-    setCurrentDateTime() {
-    try {
-        const now = new Date();
-        const localDateTime = this.getLocalDateTimeString(now);
-        const datetimeInput = document.getElementById('datetime');
-        if (datetimeInput) {
-            datetimeInput.value = localDateTime;
-            // Прокручиваем к ближайшей минуте для удобства
-            datetimeInput.step = '60'; // 1 minute steps
-        }
-    } catch (error) {
-        console.error('Failed to set current datetime:', error);
-        // Fallback: используем стандартный формат
-        const datetimeInput = document.getElementById('datetime');
-        if (datetimeInput) {
-            datetimeInput.value = new Date().toISOString().slice(0, 16);
-        }
-    }
-}
-
-    getLocalDateTimeString(date) {
-        try {
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            const hours = String(date.getHours()).padStart(2, '0');
-            const minutes = String(date.getMinutes()).padStart(2, '0');
-            
-            return `${year}-${month}-${day}T${hours}:${minutes}`;
-        } catch (error) {
-            console.error('Failed to format datetime:', error);
-            // Fallback to current time in basic format
-            return new Date().toISOString().slice(0, 16);
-        }
-    }
-
-    addEnterHandlers() {
-        try {
-            const inputs = document.querySelectorAll('input');
-            inputs.forEach(input => {
-                input.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        if (this.editingId) {
-                            this.updateEntry();
-                        } else {
-                            this.saveEntry();
-                        }
-                    }
-                });
-            });
-        } catch (error) {
-            console.error('Failed to add Enter handlers:', error);
-        }
-    }
-
-    // Улучшенный мониторинг сети
-    initNetworkMonitoring() {
-        const connectionQuality = document.getElementById('connectionQuality');
-        if (!connectionQuality) return;
-
-        const checkConnectionQuality = async () => {
-            if (!navigator.onLine) {
-                this.setNetworkStatus('offline');
+            // 1. Пробуем localStorage
+            const saved = localStorage.getItem(this.storageKey);
+            if (saved) {
+                this.data = JSON.parse(saved);
                 return;
             }
+        } catch (e) {
+            console.warn('LocalStorage недоступен:', e);
+        }
 
-            try {
-                const timeoutPromise = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('timeout')), 5000)
-                );
-
-                const fetchPromise = fetch('./?cacheBust=' + Date.now(), {
-                    method: 'HEAD',
-                    cache: 'no-cache',
-                    credentials: 'omit'
-                }).catch(() => { throw new Error('fetch failed'); });
-
-                const startTime = performance.now();
-                await Promise.race([fetchPromise, timeoutPromise]);
-                const latency = performance.now() - startTime;
-
-                this.setNetworkStatus(latency > 2000 ? 'slow' : 'online');
-            } catch (error) {
-                this.setNetworkStatus('offline');
+        try {
+            // 2. Пробуем sessionStorage
+            const saved = sessionStorage.getItem(this.storageKey);
+            if (saved) {
+                this.data = JSON.parse(saved);
+                return;
             }
-        };
+        } catch (e) {
+            console.warn('SessionStorage недоступен:', e);
+        }
 
-        // События изменения состояния сети
-        window.addEventListener('online', () => {
-            setTimeout(checkConnectionQuality, 1000);
-        });
-
-        window.addEventListener('offline', () => {
-            this.setNetworkStatus('offline');
-        });
-
-        // Периодическая проверка
-        setInterval(checkConnectionQuality, 30000);
-
-        // Первая проверка
-        setTimeout(checkConnectionQuality, 2000);
-
-        // Ручная проверка по клику
-        connectionQuality.addEventListener('click', () => {
-            connectionQuality.setAttribute('data-tooltip', 'Проверка...');
-            checkConnectionQuality();
-        });
+        // 3. Memory storage (уже инициализирован пустым массивом)
+        console.log('Используется memory storage');
     }
 
-    setNetworkStatus(status) {
-        if (this.networkStatus === status) return;
+    // Сохранение данных во все доступные хранилища
+    saveToStorage() {
+        const dataStr = JSON.stringify(this.data);
         
-        this.networkStatus = status;
-        const offlineStatus = document.getElementById('offlineStatus');
-        const connectionQuality = document.getElementById('connectionQuality');
+        try {
+            localStorage.setItem(this.storageKey, dataStr);
+        } catch (e) {
+            console.warn('Не удалось сохранить в localStorage:', e);
+        }
 
-        if (!offlineStatus || !connectionQuality) return;
-
-        switch (status) {
-            case 'offline':
-                offlineStatus.textContent = '🔌 Офлайн-режим';
-                offlineStatus.className = 'offline-status show';
-                connectionQuality.className = 'connection-quality offline';
-                connectionQuality.innerHTML = '🔌';
-                connectionQuality.setAttribute('data-tooltip', 'Нет подключения к интернету');
-                break;
-                
-            case 'slow':
-                offlineStatus.textContent = '🐌 Медленное соединение';
-                offlineStatus.className = 'offline-status show online';
-                connectionQuality.className = 'connection-quality slow';
-                connectionQuality.innerHTML = '🐌';
-                connectionQuality.setAttribute('data-tooltip', 'Медленное интернет-соединение');
-                setTimeout(() => {
-                    if (this.networkStatus === 'slow') {
-                        offlineStatus.classList.remove('show');
-                    }
-                }, 3000);
-                break;
-                
-            case 'online':
-                offlineStatus.textContent = '✅ Соединение восстановлено';
-                offlineStatus.className = 'offline-status show online';
-                connectionQuality.className = 'connection-quality online';
-                connectionQuality.innerHTML = '📶';
-                connectionQuality.setAttribute('data-tooltip', 'Стабильное соединение');
-                setTimeout(() => {
-                    if (this.networkStatus === 'online') {
-                        offlineStatus.classList.remove('show');
-                    }
-                }, 2000);
-                break;
+        try {
+            sessionStorage.setItem(this.storageKey, dataStr);
+        } catch (e) {
+            console.warn('Не удалось сохранить в sessionStorage:', e);
         }
     }
 
-    saveEntry() {
+    // Валидация данных
+    validateRecord(record) {
+        const errors = [];
+
+        if (!record.station || record.station.trim() === '') {
+            errors.push('Станция обязательна для заполнения');
+        }
+
+        if (!record.datetime) {
+            errors.push('Дата/время обязательны');
+        }
+
+        if (record.windSpeed !== undefined && (record.windSpeed < 0 || record.windSpeed > 200)) {
+            errors.push('Скорость ветра должна быть от 0 до 200 м/с');
+        }
+
+        if (record.windDirection !== undefined && (record.windDirection < 0 || record.windDirection > 360)) {
+            errors.push('Направление ветра должно быть от 0 до 360°');
+        }
+
+        if (record.humidity !== undefined && (record.humidity < 0 || record.humidity > 100)) {
+            errors.push('Влажность должна быть от 0 до 100%');
+        }
+
+        if (record.pressure !== undefined && (record.pressure < 800 || record.pressure > 1200)) {
+            errors.push('Давление должно быть от 800 до 1200 гПа');
+        }
+
+        if (record.radiation !== undefined && record.radiation < 0) {
+            errors.push('Солнечная радиация не может быть отрицательной');
+        }
+
+        return errors;
+    }
+
+    // Добавление/обновление записи
+    saveRecord(recordData) {
         try {
-            const entry = {
-                stationNumber: document.getElementById('stationNumber')?.value.trim() || '',
-                datetime: document.getElementById('datetime')?.value || '',
-                windSpeed: document.getElementById('windSpeed')?.value,
-                windDirection: document.getElementById('windDirection')?.value,
-                temperature: document.getElementById('temperature')?.value,
-                humidity: document.getElementById('humidity')?.value,
-                pressure: document.getElementById('pressure')?.value,
-                solarRadiation: document.getElementById('solarRadiation')?.value
-            };
-
-            // Валидация обязательных полей
-            if (!entry.stationNumber || !entry.datetime) {
-                this.showMessage('Заполните номер станции и дату/время', 'error');
-                return;
+            const errors = this.validateRecord(recordData);
+            if (errors.length > 0) {
+                this.showMessage(errors.join(', '), 'error');
+                return false;
             }
 
-            // Преобразование числовых значений
-            const numericFields = ['windSpeed', 'windDirection', 'temperature', 'humidity', 'pressure', 'solarRadiation'];
-            for (const field of numericFields) {
-                if (entry[field] && entry[field] !== '') {
-                    const numValue = parseFloat(entry[field]);
-                    if (isNaN(numValue)) {
-                        this.showMessage(`Некорректное значение в поле: ${field}`, 'error');
-                        return;
-                    }
-                    entry[field] = numValue;
-                } else {
-                    entry[field] = null;
+            if (this.currentEditId) {
+                // Редактирование существующей записи
+                const index = this.data.findIndex(item => item.id === this.currentEditId);
+                if (index !== -1) {
+                    this.data[index] = { ...this.data[index], ...recordData };
+                    this.showMessage('Запись обновлена', 'success');
                 }
-            }
-
-            // Добавляем ID и форматированную дату
-            entry.id = Date.now();
-            entry.displayDate = this.formatDisplayDate(entry.datetime);
-
-            this.entries.unshift(entry);
-            
-            // Сохраняем с проверкой успешности
-            const saveSuccess = this.saveToStorage();
-            this.renderEntries();
-            this.clearForm();
-            
-            if (saveSuccess) {
-                this.showMessage('Данные успешно записаны!', 'success');
+                this.currentEditId = null;
             } else {
-                this.showMessage('Данные записаны временно (проблема с хранилищем)', 'warning');
+                // Новая запись
+                const newRecord = {
+                    id: Date.now().toString(),
+                    ...recordData,
+                    createdAt: new Date().toISOString()
+                };
+                this.data.unshift(newRecord);
+                this.showMessage('Запись добавлена', 'success');
             }
+
+            this.saveToStorage();
+            this.renderTable();
+            this.resetForm();
+            return true;
+
         } catch (error) {
-            console.error('Save entry error:', error);
-            this.showMessage('Ошибка при сохранении записи', 'error');
+            console.error('Ошибка сохранения:', error);
+            this.showMessage('Ошибка сохранения', 'error');
+            return false;
         }
     }
 
-    updateEntry() {
-        if (!this.editingId) return;
-
-        try {
-            const entryIndex = this.entries.findIndex(entry => entry.id === this.editingId);
-            if (entryIndex === -1) {
-                this.showMessage('Запись не найдена', 'error');
-                this.cancelEdit();
-                return;
+    // Удаление записи
+    deleteRecord(id) {
+        if (confirm('Вы уверены, что хотите удалить эту запись?')) {
+            try {
+                this.data = this.data.filter(item => item.id !== id);
+                this.saveToStorage();
+                this.renderTable();
+                this.showMessage('Запись удалена', 'success');
+            } catch (error) {
+                console.error('Ошибка удаления:', error);
+                this.showMessage('Ошибка удаления', 'error');
             }
+        }
+    }
 
-            const updatedEntry = {
-                stationNumber: document.getElementById('stationNumber')?.value.trim() || '',
-                datetime: document.getElementById('datetime')?.value || '',
-                windSpeed: document.getElementById('windSpeed')?.value,
-                windDirection: document.getElementById('windDirection')?.value,
-                temperature: document.getElementById('temperature')?.value,
-                humidity: document.getElementById('humidity')?.value,
-                pressure: document.getElementById('pressure')?.value,
-                solarRadiation: document.getElementById('solarRadiation')?.value
-            };
+    // Начало редактирования
+    startEdit(id) {
+        const record = this.data.find(item => item.id === id);
+        if (record) {
+            document.getElementById('station').value = record.station || '';
+            document.getElementById('datetime').value = record.datetime ? record.datetime.slice(0, 16) : '';
+            document.getElementById('windSpeed').value = record.windSpeed || '';
+            document.getElementById('windDirection').value = record.windDirection || '';
+            document.getElementById('temperature').value = record.temperature || '';
+            document.getElementById('humidity').value = record.humidity || '';
+            document.getElementById('pressure').value = record.pressure || '';
+            document.getElementById('radiation').value = record.radiation || '';
 
-            if (!updatedEntry.stationNumber || !updatedEntry.datetime) {
-                this.showMessage('Заполните номер станции и дату/время', 'error');
-                return;
-            }
-
-            const numericFields = ['windSpeed', 'windDirection', 'temperature', 'humidity', 'pressure', 'solarRadiation'];
-            for (const field of numericFields) {
-                if (updatedEntry[field] && updatedEntry[field] !== '') {
-                    const numValue = parseFloat(updatedEntry[field]);
-                    if (isNaN(numValue)) {
-                        this.showMessage(`Некорректное значение в поле: ${field}`, 'error');
-                        return;
-                    }
-                    updatedEntry[field] = numValue;
-                } else {
-                    updatedEntry[field] = null;
-                }
-            }
-
-            updatedEntry.id = this.editingId;
-            updatedEntry.displayDate = this.formatDisplayDate(updatedEntry.datetime);
-
-            this.entries[entryIndex] = updatedEntry;
+            this.currentEditId = id;
+            document.querySelector('button[type="submit"]').textContent = 'Обновить';
+            document.querySelector('button[type="reset"]').textContent = 'Отмена';
             
-            const saveSuccess = this.saveToStorage();
-            this.renderEntries();
-            this.cancelEdit();
-            
-            if (saveSuccess) {
-                this.showMessage('Запись успешно обновлена!', 'success');
-            } else {
-                this.showMessage('Запись обновлена временно (проблема с хранилищем)', 'warning');
-            }
-        } catch (error) {
-            console.error('Update entry error:', error);
-            this.showMessage('Ошибка при обновлении записи', 'error');
+            // Прокрутка к форме
+            document.querySelector('.input-section').scrollIntoView({ behavior: 'smooth' });
         }
     }
 
-    editEntry(id) {
-        try {
-            const entry = this.entries.find(entry => entry.id === id);
-            if (!entry) {
-                this.showMessage('Запись не найдена', 'error');
-                return;
-            }
-
-            // Заполняем форму данными записи
-            const fields = {
-                'stationNumber': entry.stationNumber,
-                'datetime': entry.datetime,
-                'windSpeed': entry.windSpeed,
-                'windDirection': entry.windDirection,
-                'temperature': entry.temperature,
-                'humidity': entry.humidity,
-                'pressure': entry.pressure,
-                'solarRadiation': entry.solarRadiation
-            };
-
-            Object.entries(fields).forEach(([field, value]) => {
-                const element = document.getElementById(field);
-                if (element) {
-                    element.value = value || '';
-                }
-            });
-
-            // Переключаем в режим редактирования
-            this.editingId = id;
-            document.querySelector('.primary-actions').style.display = 'none';
-            document.querySelector('.edit-actions').style.display = 'flex';
-            document.querySelector('.secondary-actions').style.display = 'none';
-
-            // Прокручиваем к форме
-            document.querySelector('.card')?.scrollIntoView({ behavior: 'smooth' });
-        } catch (error) {
-            console.error('Edit entry error:', error);
-            this.showMessage('Ошибка при редактировании записи', 'error');
-        }
+    // Сброс формы
+    resetForm() {
+        document.getElementById('meteoForm').reset();
+        this.currentEditId = null;
+        document.querySelector('button[type="submit"]').textContent = 'Сохранить';
+        document.querySelector('button[type="reset"]').textContent = 'Очистить';
     }
 
-    cancelEdit() {
-        this.editingId = null;
-        const primaryActions = document.querySelector('.primary-actions');
-        const editActions = document.querySelector('.edit-actions');
-        const secondaryActions = document.querySelector('.secondary-actions');
-        
-        if (primaryActions) primaryActions.style.display = 'block';
-        if (editActions) editActions.style.display = 'none';
-        if (secondaryActions) secondaryActions.style.display = 'grid';
-        
-        this.clearForm();
-    }
-
-    deleteEntry(id) {
-        this.showConfirmModal(
-            'Удаление записи',
-            'Вы уверены, что хотите удалить эту запись? Это действие нельзя отменить.',
-            () => {
-                try {
-                    this.entries = this.entries.filter(entry => entry.id !== id);
-                    const saveSuccess = this.saveToStorage();
-                    this.renderEntries();
-                    
-                    if (saveSuccess) {
-                        this.showMessage('Запись успешно удалена!', 'success');
-                    } else {
-                        this.showMessage('Запись удалена временно (проблема с хранилищем)', 'warning');
-                    }
-                } catch (error) {
-                    console.error('Delete entry error:', error);
-                    this.showMessage('Ошибка при удалении записи', 'error');
-                }
-            }
-        );
-    }
-
+    // Экспорт в JSON
     exportToJson() {
         try {
-            // Проверяем поддержку необходимых API
-            if (typeof Blob === 'undefined') {
-                this.showMessage('Экспорт не поддерживается в этом браузере', 'error');
-                return;
-            }
-
-            const dataStr = JSON.stringify(this.entries, null, 2);
-            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const dataStr = JSON.stringify(this.data, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
             
-            // Создаем URL для скачивания
-            const url = URL.createObjectURL(dataBlob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `meteo-journal-${new Date().toISOString().slice(0, 10)}.json`;
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `meteo-journal-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
             
-            // Безопасное скачивание
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            // Освобождаем память
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-            
-            this.showMessage('Данные успешно экспортированы!', 'success');
+            this.showMessage('Данные экспортированы', 'success');
         } catch (error) {
-            console.error('Export error:', error);
-            this.showMessage('Ошибка при экспорте данных', 'error');
+            console.error('Ошибка экспорта:', error);
+            this.showMessage('Ошибка экспорта', 'error');
         }
     }
 
-    importFromJson(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-
-        // Проверяем размер файла (максимум 10MB)
-        if (file.size > 10 * 1024 * 1024) {
-            this.showMessage('Файл слишком большой (максимум 10MB)', 'error');
-            event.target.value = '';
-            return;
-        }
-
+    // Импорт из JSON
+    importFromJson(file) {
         const reader = new FileReader();
         
         reader.onload = (e) => {
             try {
                 const importedData = JSON.parse(e.target.result);
                 
-                // Валидация структуры данных
                 if (!Array.isArray(importedData)) {
-                    throw new Error('Некорректный формат данных: ожидался массив');
+                    throw new Error('Файл должен содержать массив данных');
                 }
 
-                // Проверяем обязательные поля
-                const requiredFields = ['stationNumber', 'datetime'];
-                for (let i = 0; i < importedData.length; i++) {
-                    const entry = importedData[i];
-                    for (const field of requiredFields) {
-                        if (!entry.hasOwnProperty(field)) {
-                            throw new Error(`Запись ${i+1}: отсутствует обязательное поле: ${field}`);
-                        }
-                    }
-                }
-
-                this.showConfirmModal(
-                    'Импорт данных',
-                    `Вы собираетесь заменить все текущие данные (${this.entries.length} записей) на импортированные (${importedData.length} записей). Это действие нельзя отменить. Продолжить?`,
-                    () => {
-                        try {
-                            // Обновляем ID и displayDate для импортированных записей
-                            const now = Date.now();
-                            importedData.forEach((entry, index) => {
-                                if (!entry.id) {
-                                    entry.id = now + index;
-                                }
-                                if (!entry.displayDate && entry.datetime) {
-                                    entry.displayDate = this.formatDisplayDate(entry.datetime);
-                                }
-                            });
-
-                            this.entries = importedData;
-                            const saveSuccess = this.saveToStorage();
-                            this.renderEntries();
-                            
-                            if (saveSuccess) {
-                                this.showMessage('Данные успешно импортированы!', 'success');
-                            } else {
-                                this.showMessage('Данные импортированы временно (проблема с хранилищем)', 'warning');
-                            }
-                            
-                            event.target.value = '';
-                        } catch (error) {
-                            console.error('Import processing error:', error);
-                            this.showMessage('Ошибка при обработке импортированных данных', 'error');
-                            event.target.value = '';
-                        }
-                    }
+                // Базовая валидация структуры
+                const isValid = importedData.every(item => 
+                    item.station !== undefined && item.datetime !== undefined
                 );
+
+                if (!isValid) {
+                    throw new Error('Неверная структура данных в файле');
+                }
+
+                this.data = importedData;
+                this.saveToStorage();
+                this.renderTable();
+                this.showMessage('Данные импортированы', 'success');
+                
             } catch (error) {
-                console.error('Import validation error:', error);
-                this.showMessage(`Ошибка импорта: ${error.message}`, 'error');
-                event.target.value = '';
+                console.error('Ошибка импорта:', error);
+                this.showMessage('Ошибка импорта: ' + error.message, 'error');
             }
-        };
-        
-        reader.onerror = () => {
-            this.showMessage('Ошибка чтения файла', 'error');
-            event.target.value = '';
         };
         
         reader.readAsText(file);
     }
 
-    showConfirmModal(title, message, confirmCallback) {
-        try {
-            const modalTitle = document.getElementById('modalTitle');
-            const modalMessage = document.getElementById('modalMessage');
-            const modal = document.getElementById('confirmModal');
-            
-            if (modalTitle && modalMessage && modal) {
-                modalTitle.textContent = title;
-                modalMessage.textContent = message;
-                modal.style.display = 'flex';
-                this.pendingAction = confirmCallback;
-            }
-        } catch (error) {
-            console.error('Show modal error:', error);
-            // Если модальное окно не работает, выполняем действие сразу с подтверждением
-            if (confirm(message)) {
-                confirmCallback();
-            }
+    // Отрисовка таблицы с бесконечным скроллом
+    renderTable() {
+        const tbody = document.getElementById('tableBody');
+        const visibleData = this.data.slice(0, (this.currentPage + 1) * this.itemsPerPage);
+        
+        if (visibleData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align: center;">Нет данных</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = visibleData.map(record => `
+            <tr>
+                <td>${this.escapeHtml(record.station)}</td>
+                <td>${this.formatDateTime(record.datetime)}</td>
+                <td>${record.windSpeed !== undefined ? record.windSpeed : '-'}</td>
+                <td>${record.windDirection !== undefined ? record.windDirection : '-'}</td>
+                <td>${record.temperature !== undefined ? record.temperature : '-'}</td>
+                <td>${record.humidity !== undefined ? record.humidity : '-'}</td>
+                <td>${record.pressure !== undefined ? record.pressure : '-'}</td>
+                <td>${record.radiation !== undefined ? record.radiation : '-'}</td>
+                <td>
+                    <div class="action-buttons">
+                        <button class="action-btn edit-btn" onclick="meteoJournal.startEdit('${record.id}')" title="Редактировать">✏️</button>
+                        <button class="action-btn delete-btn" onclick="meteoJournal.deleteRecord('${record.id}')" title="Удалить">🗑️</button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+        // Показываем/скрываем кнопку "Загрузить еще"
+        const loadMoreBtn = document.getElementById('loadMoreBtn');
+        if (visibleData.length < this.data.length) {
+            loadMoreBtn.style.display = 'block';
+        } else {
+            loadMoreBtn.style.display = 'none';
         }
     }
 
-    hideModal() {
-        try {
-            const modal = document.getElementById('confirmModal');
-            if (modal) {
-                modal.style.display = 'none';
-            }
-            this.pendingAction = null;
-        } catch (error) {
-            console.error('Hide modal error:', error);
-        }
+    // Загрузка дополнительных данных
+    loadMore() {
+        this.currentPage++;
+        this.renderTable();
     }
 
-    executeConfirmedAction() {
-        if (this.pendingAction) {
-            try {
-                this.pendingAction();
-            } catch (error) {
-                console.error('Confirmed action error:', error);
-                this.showMessage('Ошибка при выполнении действия', 'error');
-            }
-        }
-        this.hideModal();
+    // Форматирование даты/времени
+    formatDateTime(isoString) {
+        if (!isoString) return '-';
+        const date = new Date(isoString);
+        return date.toLocaleString('ru-RU');
     }
 
-    formatDisplayDate(isoString) {
-        try {
-            const [datePart, timePart] = isoString.split('T');
-            const [year, month, day] = datePart.split('-').map(Number);
-            const [hours, minutes] = timePart.split(':').map(Number);
-            
-            const date = new Date(year, month - 1, day, hours, minutes);
-            return date.toLocaleString('ru-RU', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        } catch (error) {
-            console.error('Date formatting error:', error);
-            return isoString; // Fallback to original string
-        }
-    }
-
-    showMessage(text, type) {
-        try {
-            const message = document.createElement('div');
-            message.textContent = text;
-            message.style.cssText = `
-                position: fixed;
-                top: 20px;
-                left: 50%;
-                transform: translateX(-50%);
-                background: ${type === 'success' ? '#28a745' : type === 'warning' ? '#ffc107' : '#dc3545'};
-                color: white;
-                padding: 12px 24px;
-                border-radius: 8px;
-                z-index: 1000;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-                animation: slideDown 0.3s ease;
-                max-width: 90%;
-                text-align: center;
-            `;
-            
-            document.body.appendChild(message);
-            
-            setTimeout(() => {
-                if (message.parentNode) {
-                    message.parentNode.removeChild(message);
-                }
-            }, type === 'warning' ? 5000 : 3000);
-        } catch (error) {
-            console.error('Show message error:', error);
-            // Fallback к alert для критически важных сообщений
-            if (type === 'error') {
-                alert(text);
-            }
-        }
-    }
-
-    clearForm() {
-        try {
-            const fields = ['stationNumber', 'windSpeed', 'windDirection', 'temperature', 'humidity', 'pressure', 'solarRadiation'];
-            fields.forEach(field => {
-                const element = document.getElementById(field);
-                if (element) {
-                    element.value = '';
-                }
-            });
-            
-            this.setCurrentDateTime();
-            
-            const stationNumberInput = document.getElementById('stationNumber');
-            if (stationNumberInput) {
-                stationNumberInput.focus();
-            }
-        } catch (error) {
-            console.error('Clear form error:', error);
-        }
-    }
-
-    saveToStorage() {
-        try {
-            const success = this.storage.set('meteoEntries', this.entries);
-            
-            // Показываем предупреждение о проблемах с хранилищем только один раз
-            if (!success && !this.storageWarningShown) {
-                this.storageWarningShown = true;
-                const quotaInfo = this.storage.getQuotaInfo();
-                console.warn('Storage issues detected:', quotaInfo);
-            }
-            
-            return success;
-        } catch (error) {
-            console.error('Save to storage error:', error);
-            return false;
-        }
-    }
-
-    renderEntries() {
-        const container = document.getElementById('entriesTable');
-        if (!container) return;
-
-        try {
-            if (this.entries.length === 0) {
-                container.innerHTML = `
-                    <tr>
-                        <td colspan="9" style="text-align: center; padding: 40px;">
-                            <div class="empty-state">
-                                <div class="empty-state-icon">🌤️</div>
-                                <p>Пока нет записей</p>
-                                <p><small>Добавьте первую метеозапись</small></p>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
-
-            container.innerHTML = this.entries
-                .map(entry => `
-                    <tr data-id="${entry.id}">
-                        <td class="station-number">${this.escapeHtml(entry.stationNumber)}</td>
-                        <td>${entry.displayDate}</td>
-                        <td>${entry.windSpeed !== null && entry.windSpeed !== undefined ? entry.windSpeed + ' м/с' : '<span class="empty-value">-</span>'}</td>
-                        <td>${entry.windDirection !== null && entry.windDirection !== undefined ? entry.windDirection + '°' : '<span class="empty-value">-</span>'}</td>
-                        <td class="temperature">${entry.temperature !== null && entry.temperature !== undefined ? entry.temperature + '°C' : '<span class="empty-value">-</span>'}</td>
-                        <td class="humidity">${entry.humidity !== null && entry.humidity !== undefined ? entry.humidity + '%' : '<span class="empty-value">-</span>'}</td>
-                        <td>${entry.pressure !== null && entry.pressure !== undefined ? entry.pressure + ' гПа' : '<span class="empty-value">-</span>'}</td>
-                        <td>${entry.solarRadiation !== null && entry.solarRadiation !== undefined ? entry.solarRadiation + ' Вт/м²' : '<span class="empty-value">-</span>'}</td>
-                        <td class="actions-cell">
-                            <button class="btn btn-sm btn-outline" onclick="meteoJournal.editEntry(${entry.id})" title="Редактировать">✏️</button>
-                            <button class="btn btn-sm btn-danger" onclick="meteoJournal.deleteEntry(${entry.id})" title="Удалить">🗑️</button>
-                        </td>
-                    </tr>
-                `)
-                .join('');
-        } catch (error) {
-            console.error('Render entries error:', error);
-            container.innerHTML = `
-                <tr>
-                    <td colspan="9" style="text-align: center; padding: 40px; color: #dc3545;">
-                        Ошибка при отображении данных
-                    </td>
-                </tr>
-            `;
-        }
-    }
-
+    // Экранирование HTML для безопасности
     escapeHtml(unsafe) {
-        if (!unsafe) return '-';
-        try {
-            return unsafe
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
-        } catch (error) {
-            return unsafe; // Fallback to original string
+        return unsafe
+            .toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    // Показать сообщение
+    showMessage(message, type = 'info') {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.className = `toast show ${type}`;
+        
+        setTimeout(() => {
+            toast.className = 'toast';
+        }, 3000);
+    }
+
+    // Мониторинг соединения
+    updateConnectionStatus() {
+        const statusElement = document.getElementById('connectionStatus');
+        
+        if (!navigator.onLine) {
+            statusElement.textContent = '🔌';
+            statusElement.className = 'connection-status offline';
+            return;
         }
+
+        // Симуляция проверки скорости (в реальном приложении можно использовать Navigation Timing API)
+        const startTime = performance.now();
+        
+        fetch('/favicon.ico', { cache: 'no-cache' })
+            .then(() => {
+                const latency = performance.now() - startTime;
+                if (latency > 2000) {
+                    statusElement.textContent = '🐌';
+                    statusElement.className = 'connection-status slow';
+                } else {
+                    statusElement.textContent = '📶';
+                    statusElement.className = 'connection-status online';
+                }
+            })
+            .catch(() => {
+                statusElement.textContent = '🔌';
+                statusElement.className = 'connection-status offline';
+            });
+    }
+    clearCache() {
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+            this.showMessage('Запрос на очистку кэша отправлен', 'success');
+        } else {
+            this.showMessage('Service Worker не доступен', 'error');
+        }
+    }
+
+    // Настройка обработчиков событий
+    setupEventListeners() {
+        const form = document.getElementById('meteoForm');
+        const currentTimeBtn = document.getElementById('currentTimeBtn');
+        const exportBtn = document.getElementById('exportBtn');
+        const importBtn = document.getElementById('importBtn');
+        const importFile = document.getElementById('importFile');
+        const loadMoreBtn = document.getElementById('loadMoreBtn');
+        const clearCacheBtn = document.getElementById('clearCacheBtn');
+
+        // Установка текущего времени по умолчанию
+        const now = new Date();
+        const timezoneOffset = now.getTimezoneOffset() * 60000;
+        const localISOTime = new Date(now - timezoneOffset).toISOString().slice(0, 16);
+        document.getElementById('datetime').value = localISOTime;
+
+        // Обработчик формы
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            const formData = {
+                station: document.getElementById('station').value.trim(),
+                datetime: document.getElementById('datetime').value,
+                windSpeed: document.getElementById('windSpeed').value ? parseFloat(document.getElementById('windSpeed').value) : undefined,
+                windDirection: document.getElementById('windDirection').value ? parseInt(document.getElementById('windDirection').value) : undefined,
+                temperature: document.getElementById('temperature').value ? parseFloat(document.getElementById('temperature').value) : undefined,
+                humidity: document.getElementById('humidity').value ? parseInt(document.getElementById('humidity').value) : undefined,
+                pressure: document.getElementById('pressure').value ? parseFloat(document.getElementById('pressure').value) : undefined,
+                radiation: document.getElementById('radiation').value ? parseFloat(document.getElementById('radiation').value) : undefined
+            };
+
+            this.saveRecord(formData);
+        });
+
+        // Кнопка сброса формы
+        form.addEventListener('reset', () => {
+            this.resetForm();
+            // Восстанавливаем текущее время
+            document.getElementById('datetime').value = localISOTime;
+        });
+
+        // Кнопка текущего времени
+        currentTimeBtn.addEventListener('click', () => {
+            const now = new Date();
+            const timezoneOffset = now.getTimezoneOffset() * 60000;
+            const localISOTime = new Date(now - timezoneOffset).toISOString().slice(0, 16);
+            document.getElementById('datetime').value = localISOTime;
+        });
+
+        clearCacheBtn.addEventListener('click', () => this.clearCache());
+
+        // Экспорт
+        exportBtn.addEventListener('click', () => this.exportToJson());
+
+        // Импорт
+        importBtn.addEventListener('click', () => importFile.click());
+        importFile.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                this.importFromJson(e.target.files[0]);
+                e.target.value = ''; // Сброс для возможности повторного выбора того же файла
+            }
+        });
+
+        // Загрузка дополнительных данных
+        loadMoreBtn.addEventListener('click', () => this.loadMore());
+
+        // Слушатели изменения состояния сети
+        window.addEventListener('online', () => this.updateConnectionStatus());
+        window.addEventListener('offline', () => this.updateConnectionStatus());
+        
+        // Периодическая проверка соединения
+        setInterval(() => this.updateConnectionStatus(), 30000);
     }
 }
 
-// Глобальная функция для показа постоянных сообщений
-function showPersistentMessage(text, type = 'warning') {
-    try {
-        const existingMessage = document.getElementById('persistent-message');
-        if (existingMessage) {
-            existingMessage.remove();
-        }
+// Инициализация приложения
+let meteoJournal;
 
-        const message = document.createElement('div');
-        message.id = 'persistent-message';
-        message.textContent = text;
-        message.style.cssText = `
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: ${type === 'warning' ? '#ffc107' : '#6c757d'};
-            color: ${type === 'warning' ? '#212529' : 'white'};
-            padding: 12px 24px;
-            border-radius: 8px;
-            z-index: 1001;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            max-width: 90%;
-            text-align: center;
-            border: 2px solid ${type === 'warning' ? '#ffa000' : '#545b62'};
-        `;
-
-        document.body.appendChild(message);
-    } catch (error) {
-        console.error('Persistent message error:', error);
-    }
-}
-
-// Инициализация приложения с обработкой ошибок
-try {
-    const meteoJournal = new MeteoJournal();
-    window.meteoJournal = meteoJournal; // Глобальный доступ для отладки
-    
-    // Глобальные функции для обработки событий из HTML
-    window.editEntry = (id) => meteoJournal.editEntry(id);
-    window.deleteEntry = (id) => meteoJournal.deleteEntry(id);
-    
-    console.log('Application started successfully');
-} catch (error) {
-    console.error('Failed to start application:', error);
-    showPersistentMessage('Критическая ошибка при запуске приложения', 'error');
-    
-    // Аварийный fallback - показываем базовый интерфейс
-    document.addEventListener('DOMContentLoaded', () => {
-        const container = document.querySelector('.container');
-        if (container) {
-            container.innerHTML = `
-                <div class="card">
-                    <h2>Метеожурнал экспедиции</h2>
-                    <p>Приложение временно недоступно из-за технических проблем.</p>
-                    <button onclick="location.reload()">Перезагрузить</button>
-                </div>
-            `;
-        }
-    });
-}
+document.addEventListener('DOMContentLoaded', () => {
+    meteoJournal = new MeteoJournal();
+});
