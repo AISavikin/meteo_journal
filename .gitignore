@@ -1,3 +1,6 @@
 start_server.bat
 new.json
 start_console.bat
+convert_json.py
+meteo-journal-2025-11-20 (2).json
+meteo-journal-converted.json
